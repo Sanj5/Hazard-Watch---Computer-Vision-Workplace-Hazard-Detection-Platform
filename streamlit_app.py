@@ -10,6 +10,102 @@ from src.inference.adapters import YOLODetectorAdapter
 from src.pipeline.safety_pipeline import SafetyPipeline
 
 
+def inject_ui_styles():
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=DM+Sans:wght@400;500;700&display=swap');
+
+        .stApp {
+            background:
+                radial-gradient(circle at 0% 0%, rgba(22, 163, 74, 0.16), transparent 36%),
+                radial-gradient(circle at 100% 20%, rgba(14, 116, 144, 0.14), transparent 36%),
+                #f7faf9;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.02em;
+        }
+
+        .hw-hero {
+            border-radius: 16px;
+            padding: 1.1rem 1.2rem;
+            margin-bottom: 0.9rem;
+            background: linear-gradient(120deg, #0f172a 0%, #0b3a44 60%, #14532d 100%);
+            color: #f8fafc;
+            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.25);
+        }
+
+        .hw-subtle {
+            color: rgba(248, 250, 252, 0.86);
+            margin-top: 0.2rem;
+        }
+
+        .hw-chip {
+            display: inline-block;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            background: rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            padding: 0.2rem 0.62rem;
+            margin: 0.42rem 0.4rem 0 0;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(15, 23, 42, 0.08);
+            background: linear-gradient(180deg, #f8fbfa 0%, #eef5f3 100%);
+        }
+
+        [data-testid="stMetricValue"] {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .stButton > button {
+            border-radius: 12px;
+            border: 0;
+            background: linear-gradient(120deg, #0f766e 0%, #15803d 100%);
+            color: #ffffff;
+            font-weight: 700;
+            min-height: 44px;
+        }
+
+        .stButton > button:hover {
+            filter: brightness(1.05);
+            transform: translateY(-1px);
+            transition: all 0.2s ease;
+        }
+
+        .hw-empty {
+            border: 1px dashed rgba(15, 23, 42, 0.2);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 1.1rem;
+            color: #334155;
+        }
+
+        @media (max-width: 900px) {
+            .hw-hero {
+                padding: 1rem;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def risk_level_color(risk_level: str) -> str:
+    if risk_level == "HIGH":
+        return "#dc2626"
+    if risk_level == "MEDIUM":
+        return "#d97706"
+    return "#16a34a"
+
+
 def draw_boxes(frame: np.ndarray, detections):
     for d in detections:
         x1, y1, x2, y2 = [int(v) for v in d.bbox]
@@ -55,8 +151,27 @@ def resolve_video_source(source_mode: str, uploaded_file):
 
 
 def app():
-    st.set_page_config(page_title="Workplace Hazard Detection", layout="wide")
-    st.title("Computer Vision Workplace Hazard Detection and Prediction")
+    st.set_page_config(
+        page_title="HazardWatch Live",
+        page_icon="⛑️",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    inject_ui_styles()
+
+    st.markdown(
+        """
+        <div class="hw-hero">
+            <h2 style="margin:0;">HazardWatch Command Center</h2>
+            <p class="hw-subtle">Live workplace risk intelligence powered by object detection, tracking, and safety coaching.</p>
+            <span class="hw-chip">PPE Monitoring</span>
+            <span class="hw-chip">Near-Miss Detection</span>
+            <span class="hw-chip">Fatigue Alerts</span>
+            <span class="hw-chip">Real-time Coaching</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Keep UI minimal: fixed runtime defaults, no parameter controls.
     model_path = "yolov8n.pt"
@@ -68,21 +183,68 @@ def app():
     fatigue_alert_score = 0.65
     frame_limit = 300
 
-    source_mode = st.radio("Video Source", options=["Webcam", "Upload Video"], horizontal=True)
-    uploaded = st.file_uploader("Upload video", type=["mp4", "avi", "mov", "mkv"]) if source_mode == "Upload Video" else None
+    with st.sidebar:
+        st.markdown("### Monitoring Setup")
+        source_mode = st.radio("Video Source", options=["Webcam", "Upload Video"], horizontal=True)
+        uploaded = (
+            st.file_uploader("Upload Video File", type=["mp4", "avi", "mov", "mkv"])
+            if source_mode == "Upload Video"
+            else None
+        )
+        st.caption("Runtime uses tuned defaults for stable real-time behavior.")
+        run_btn = st.button("Start Monitoring", use_container_width=True)
+
+        st.markdown("### Active Profile")
+        st.write("Model: YOLOv8 Nano")
+        st.write(f"Confidence: {conf:.2f}")
+        st.write(f"IoU: {iou:.2f}")
+        st.write(f"Frame Budget: {frame_limit}")
+
     video_source = resolve_video_source(source_mode, uploaded)
 
-    run_btn = st.button("Start Monitoring")
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Pipeline", "Ready")
+    kpi2.metric("Model", "yolov8n")
+    kpi3.metric("Tracking", "ByteTrack")
+    kpi4.metric("Frame Limit", str(frame_limit))
 
-    col1, col2 = st.columns([2.0, 1.0])
+    col1, col2 = st.columns([2.2, 1.0])
     frame_slot = col1.empty()
+    risk_head = col2.empty()
     risk_slot = col2.empty()
-    events_slot = col2.empty()
-    fatigue_slot = col2.empty()
-    coach_slot = col2.empty()
+    events_slot = col2.container(border=True)
+    fatigue_slot = col2.container(border=True)
+    coach_slot = col2.container(border=True)
+    progress_slot = col1.empty()
+
+    with events_slot:
+        st.markdown("### Event Counters")
+        ev_col1, ev_col2 = st.columns(2)
+        ppe_metric = ev_col1.empty()
+        unsafe_metric = ev_col2.empty()
+        near_miss_metric = ev_col1.empty()
+        fatigue_metric = ev_col2.empty()
+        scene_hazard_metric = st.empty()
+
+    with fatigue_slot:
+        st.markdown("### Fatigue Alerts")
+        fatigue_body = st.empty()
+
+    with coach_slot:
+        st.markdown("### Real-time Safety Coaching")
+        coach_body = st.empty()
 
     if not run_btn:
-        st.info("Click Start Monitoring.")
+        frame_slot.markdown(
+            """
+            <div class="hw-empty">
+                <h4 style="margin-top:0;">Ready to monitor</h4>
+                <p style="margin-bottom:0.45rem;">Select a source in the sidebar and start monitoring to view live detections and risk analytics.</p>
+                <p style="margin-bottom:0;">Tip: Upload a short clip for a quick demo run.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         return
 
     if video_source is None:
@@ -132,20 +294,23 @@ def app():
         draw_status(render, analysis)
         frame_slot.image(cv2.cvtColor(render, cv2.COLOR_BGR2RGB), channels="RGB", use_container_width=True)
 
+        progress = min(1.0, (processed + 1) / max(frame_limit, 1))
+        progress_slot.progress(progress, text=f"Frame {processed + 1} / {frame_limit}")
+
         risk_history.append(analysis.risk_score)
+        risk_head.markdown(
+            f"### Current Risk: <span style='color:{risk_level_color(analysis.risk_level)}'>{analysis.risk_level}</span>",
+            unsafe_allow_html=True,
+        )
         risk_slot.line_chart({"risk_score": risk_history[-100:]})
 
-        with events_slot.container():
-            st.markdown("### Event Counters")
-            c1, c2 = st.columns(2)
-            c1.metric("PPE Violations", len(analysis.ppe_violations))
-            c2.metric("Unsafe Behaviors", len(analysis.behavior_events))
-            c1.metric("Near Misses", len(analysis.near_miss_events))
-            c2.metric("Fatigue Alerts", len(analysis.fatigue_events))
-            st.metric("Scene Hazards", len(analysis.scene_hazard_events))
+        ppe_metric.metric("PPE Violations", len(analysis.ppe_violations))
+        unsafe_metric.metric("Unsafe Behaviors", len(analysis.behavior_events))
+        near_miss_metric.metric("Near Misses", len(analysis.near_miss_events))
+        fatigue_metric.metric("Fatigue Alerts", len(analysis.fatigue_events))
+        scene_hazard_metric.metric("Scene Hazards", len(analysis.scene_hazard_events))
 
-        with fatigue_slot.container():
-            st.markdown("### Fatigue Alerts")
+        with fatigue_body.container():
             if analysis.fatigue_events:
                 for f in analysis.fatigue_events[:3]:
                     st.warning(
@@ -155,10 +320,11 @@ def app():
             else:
                 st.caption("No fatigue alerts in current frame.")
 
-        with coach_slot.container():
-            st.markdown("### Real-time Safety Coaching")
+        with coach_body.container():
             for msg in analysis.coaching_messages:
                 st.warning(msg)
+            if not analysis.coaching_messages:
+                st.caption("No coaching prompts in current frame.")
 
         processed += 1
 
