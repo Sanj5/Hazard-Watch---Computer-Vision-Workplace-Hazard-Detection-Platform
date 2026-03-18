@@ -1,105 +1,74 @@
-# Computer Vision Workplace Hazard Detection Platform
+# Hazard Watch: Computer Vision Workplace Hazard Detection Platform
 
-This project is a practical starter for building a computer vision safety platform with:
+A practical, modular safety analytics project for real-time workplace monitoring using computer vision.
 
-- PPE detection
-- Behavior monitoring
-- Worker fatigue analysis
-- Surroundings hazard analysis
-- Hazard prediction
-- Near-miss detection
-- Risk score calculation
-- Real-time safety coaching
-- Future collision detection
+Hazard Watch combines object detection, tracking, behavior signals, fatigue monitoring, hazard prediction, and real-time coaching into one pipeline that can run from webcam or video input.
 
-## 1) What this starter gives you
+## Table of Contents
 
-- A modular Python codebase (`src/`) for real-time frame-by-frame safety analysis.
-- YOLOv8/YOLOv9-ready detection adapter with ByteTrack/BOTSort tracker support.
-- MediaPipe-based posture cue detection hook.
-- PyTorch LSTM trajectory forecasting wrapper for future collision prediction.
-- Dynamic risk scoring and real-time safety coaching.
-- Streamlit dashboard for monitoring and alerts.
-- A training script template and unit tests.
+- [Overview](#overview)
+- [Core Capabilities](#core-capabilities)
+- [Tech Stack](#tech-stack)
+- [Repository Structure](#repository-structure)
+- [Quick Start](#quick-start)
+- [Run the Platform](#run-the-platform)
+- [Dashboard Experience](#dashboard-experience)
+- [How the Pipeline Works](#how-the-pipeline-works)
+- [Configuration Notes](#configuration-notes)
+- [Testing](#testing)
+- [Git and GitHub Workflow](#git-and-github-workflow)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Safety Disclaimer](#safety-disclaimer)
 
-This is designed so you can plug in your own detector model (YOLO/RT-DETR/etc.) and progressively improve accuracy.
+## Overview
 
-## 2) Technology stack
+This project is designed as a strong starter for industrial safety intelligence systems.
 
-- Python, PyTorch, OpenCV
-- Object detection: YOLOv8/YOLOv9 (`person`, `helmet`, `vest`, `gloves`, `goggles`, `boots`, `forklift`, `truck`, etc.)
-- Pose estimation: MediaPipe (implemented) or OpenPose (plug-in option)
-- Fatigue analysis: temporal low-movement and posture-cue scoring (implemented)
-- Surroundings analysis: scene hazards, equipment congestion, and worker-equipment proximity (implemented)
-- Tracking: ByteTrack/BOTSort through Ultralytics tracker config (DeepSORT can be integrated as adapter)
-- Trajectory prediction: LSTM (implemented wrapper) or Transformer (recommended extension)
-- Hazard prediction: temporal risk model (starter) with upgrade path to sequence models
+It helps detect and reason about:
 
-## 3) Setup
+- Personal protective equipment compliance
+- Unsafe worker behavior
+- Fatigue-like patterns from temporal movement and posture cues
+- Near-miss events
+- Scene-level hazards and risk escalation
+- Short-term hazard probability trends
+- Real-time operator coaching prompts
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+The codebase is intentionally modular so you can replace detectors, models, and thresholds with site-specific versions.
 
-## 4) Run (YOLO pipeline)
+## Core Capabilities
 
-```powershell
-python -m src.main --video 0
-```
+- Real-time frame-by-frame analysis pipeline
+- YOLO adapter with tracking support
+- Pose and behavior integration hooks
+- Temporal risk scoring and hazard prediction
+- Near-miss logic and scene hazard checks
+- Real-time coaching message generation
+- Streamlit dashboard with live frame, risk chart, and event panels
 
-Use `--video <path>` for a file.
+## Tech Stack
 
-Custom model example:
+- Python
+- OpenCV
+- PyTorch
+- Streamlit
+- Ultralytics-style detector and tracker integration
+- Optional MediaPipe pose signals
 
-```powershell
-python -m src.main --video 0 --model path\to\best.pt --conf 0.4 --iou 0.5
-```
-
-Disable tracking (not recommended for collision prediction):
-
-```powershell
-python -m src.main --video 0 --no-track
-```
-
-## 5) Run Streamlit platform
-
-```powershell
-streamlit run streamlit_app.py
-```
-
-Dashboard includes:
-
-- Live frame visualization with detections
-- Risk score trend chart
-- PPE / behavior / near-miss counters
-- Real-time safety coaching alerts
-
-## 6) Detection output format
-
-The YOLO adapter in `src/inference/adapters.py` converts detections to:
-
-```python
-{
-    "track_id": 12,
-    "label": "person",
-    "confidence": 0.91,
-    "bbox": [x1, y1, x2, y2]
-}
-```
-
-Then feed those detections to the pipeline.
-
-## 7) Suggested project structure
+## Repository Structure
 
 ```text
 .
-|-- streamlit_app.py
+|-- README.md
 |-- requirements.txt
+|-- streamlit_app.py
 |-- scripts/
 |   |-- train_hazard_model.py
 |-- src/
+|   |-- main.py
+|   |-- config.py
 |   |-- coaching/
 |   |-- detectors/
 |   |-- inference/
@@ -110,73 +79,210 @@ Then feed those detections to the pipeline.
 |   |-- tracking/
 |   |-- utils/
 |-- tests/
+|   |-- test_risk_scorer.py
 ```
 
-## 8) Dataset suggestions
+## Quick Start
 
-- PPE datasets:
-    - Roboflow PPE datasets (hard hats, vests, gloves, goggles)
-    - CHV / construction safety datasets from Kaggle
-- Behavior datasets:
-    - UCF-Crime (unsafe behavior context)
-    - HMDB51 / Kinetics subsets for action priors
-- Industrial assets / vehicles:
-    - Custom warehouse/factory annotations for forklifts, trucks, robots
-- Near-miss and incident data:
-    - Site CCTV clips + incident logs with timestamps and zones
+### 1) Prerequisites
 
-Recommended annotation schema:
+- Python 3.10 or newer recommended
+- pip
+- A compatible camera, or a test video file
 
-- Frame-level boxes + IDs: `person`, `helmet`, `vest`, `gloves`, `goggles`, `boots`, `forklift`, `truck`, `robot`
-- Event labels: `running_restricted`, `phone_use`, `unsafe_climbing`, `unsafe_posture`, `near_miss`
-- Trajectory windows: `(track_id, t, x, y, vx, vy)`
-- Scene metadata: restricted zones, hazard zones, shift, weather/lighting
+### 2) Create and activate virtual environment
 
-## 9) Training pipeline (recommended)
+Windows PowerShell:
 
-1. Train/fine-tune YOLO PPE + equipment detector on site-specific images.
-2. Train behavior classifier from pose/action features.
-3. Train LSTM/Transformer trajectory forecaster on tracked center-point sequences.
-4. Train hazard prediction model using aggregated temporal features.
-5. Calibrate risk weights/thresholds with historical incidents.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
 
-Starter scripts provided:
+Linux or macOS:
 
-- `scripts/train_hazard_model.py` for baseline hazard model pattern.
-- Add `scripts/train_trajectory_lstm.py` and `scripts/train_ppe_yolo.py` for production training.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-## 10) Evaluation metrics
+### 3) Install dependencies
 
-- Detection (YOLO): mAP@0.5, mAP@0.5:0.95, precision, recall
-- Tracking: MOTA, IDF1, ID switches, HOTA
-- Behavior detection: F1-score, precision/recall by class
-- Near-miss and collision prediction: lead-time accuracy, false alarm rate, miss rate
-- Hazard prediction: AUROC, PR-AUC, calibration error
-- End-to-end: alert latency (ms), FPS throughput, operator response acceptance rate
+```powershell
+pip install -r requirements.txt
+```
 
-## 11) Deployment approach
+## Run the Platform
 
-- Edge inference node (GPU): on-site processing for low latency
-- Message broker (MQTT/Kafka): stream events to central safety service
-- Alert channels: dashboard, siren, SMS/Teams, control room API
-- Storage: event clips + metadata in object storage and SQL/Timeseries DB
-- MLOps: model registry, staged rollout, drift monitoring, periodic retraining
+### CLI pipeline
 
-Reference latency budget:
+Use webcam:
 
-- Detection + tracking: 25-40 ms/frame
-- Behavior + trajectory + risk scoring: 5-15 ms/frame
-- End-to-end alerting target: < 250 ms
+```powershell
+python -m src.main --video 0
+```
 
-## 12) Suggested roadmap
+Use a video file:
 
-1. Collect and label your site-specific PPE + hazard data.
-2. Train/fine-tune PPE detector classes.
-3. Add robust tracking and trajectory smoothing.
-4. Train hazard prediction on temporal windows.
-5. Calibrate risk thresholds with real incident history.
-6. Deploy with edge GPU + alert channels.
+```powershell
+python -m src.main --video path\to\video.mp4
+```
 
-## 13) Safety note
+Use a custom detector model:
 
-This is a decision-support system, not a replacement for human safety protocols.
+```powershell
+python -m src.main --video 0 --model path\to\best.pt --conf 0.4 --iou 0.5
+```
+
+Disable tracking (not recommended for trajectory and collision logic):
+
+```powershell
+python -m src.main --video 0 --no-track
+```
+
+### Streamlit dashboard
+
+```powershell
+streamlit run streamlit_app.py
+```
+
+## Dashboard Experience
+
+The dashboard provides:
+
+- Live annotated frame stream
+- Risk trend chart
+- Fixed Event Counters panel shown once, with values updated every frame
+- Fatigue alert panel
+- Real-time coaching panel
+- Processing progress indicator
+
+## How the Pipeline Works
+
+At a high level:
+
+1. Video frame is read from webcam or uploaded file.
+2. Detector adapter returns labeled bounding boxes and confidence.
+3. Tracker assigns and maintains identities across frames.
+4. Safety modules analyze behavior, PPE, near-miss, fatigue, surroundings, and temporal risk.
+5. Aggregated analysis produces:
+   - risk score and risk level
+   - hazard probability estimate
+   - event lists and coaching prompts
+6. Results are rendered in the dashboard and charts.
+
+Detection output consumed by the pipeline follows this shape:
+
+```python
+{
+    "track_id": 12,
+    "label": "person",
+    "confidence": 0.91,
+    "bbox": [x1, y1, x2, y2]
+}
+```
+
+## Configuration Notes
+
+Primary runtime controls include:
+
+- Detection confidence threshold
+- IoU threshold
+- Tracker config
+- Fatigue stationary time threshold
+- Fatigue movement threshold
+- Fatigue alert threshold
+- Frame processing limit
+
+Adjust values in the app or config modules based on camera placement, workcell geometry, and alert tolerance.
+
+## Testing
+
+Run tests:
+
+```powershell
+pytest -q
+```
+
+Current tests include risk scorer coverage and can be extended with detector, tracker, and pipeline integration tests.
+
+## Git and GitHub Workflow
+
+Clone:
+
+```powershell
+git clone <your-repo-url>
+cd Hazard-Watch---Computer-Vision-Workplace-Hazard-Detection-Platform
+```
+
+Create a branch:
+
+```powershell
+git checkout -b feature/short-description
+```
+
+Commit changes:
+
+```powershell
+git add .
+git commit -m "feat: add short summary"
+```
+
+Push branch:
+
+```powershell
+git push -u origin feature/short-description
+```
+
+Sync with main:
+
+```powershell
+git checkout main
+git pull origin main
+git checkout feature/short-description
+git merge main
+```
+
+Then open a pull request from feature branch to main.
+
+## Troubleshooting
+
+- Webcam does not open:
+  - Verify camera is not used by another app.
+  - Try a video file source first.
+- MediaPipe warning appears:
+  - The app continues with core detection and risk modules.
+  - Install a compatible mediapipe build if posture cues are required.
+- Low FPS:
+  - Use smaller video resolution.
+  - Reduce frame limit.
+  - Use GPU-enabled environment.
+- Too many false alerts:
+  - Recalibrate thresholds for your site conditions.
+  - Improve detector quality with domain-specific training data.
+
+## Roadmap
+
+- Add richer temporal hazard models
+- Add trajectory model training scripts
+- Add alert export and event logging backends
+- Add configuration presets per workplace type
+- Add end-to-end benchmark and profiling suite
+
+## Contributing
+
+Contributions are welcome.
+
+Recommended contribution flow:
+
+1. Fork or branch from main.
+2. Keep changes focused and small.
+3. Add or update tests when behavior changes.
+4. Open a pull request with:
+   - clear summary
+   - before and after behavior
+   - screenshots for UI changes
+
+## Safety Disclaimer
+
+This software is decision-support only. It does not replace site safety standards, supervision, training, or regulatory compliance procedures.
