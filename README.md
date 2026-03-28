@@ -35,6 +35,8 @@ It helps detect and reason about:
 - Scene-level hazards and risk escalation
 - Short-term hazard probability trends
 - Real-time operator coaching prompts
+- Voice-based safety coaching prompts
+- Zone-wise risk heatmap trends
 
 The codebase is intentionally modular so you can replace detectors, models, and thresholds with site-specific versions.
 
@@ -46,6 +48,8 @@ The codebase is intentionally modular so you can replace detectors, models, and 
 - Temporal risk scoring and hazard prediction
 - Near-miss logic and scene hazard checks
 - Real-time coaching message generation
+- Voice coach guidance for operators
+- Zone-based risk heatmap analytics
 - Streamlit dashboard with live frame, risk chart, and event panels
 
 ## Tech Stack
@@ -152,9 +156,11 @@ The dashboard provides:
 
 - Live annotated frame stream
 - Risk trend chart
+- Zone risk heatmap by monitored area
 - Fixed Event Counters panel shown once, with values updated every frame
 - Fatigue alert panel
 - Real-time coaching panel
+- Voice coach panel for spoken safety cues
 - Processing progress indicator
 
 ## How the Pipeline Works
@@ -265,6 +271,8 @@ Then open a pull request from feature branch to main.
 
 - Add richer temporal hazard models
 - Add trajectory model training scripts
+- Add configurable voice coach with multilingual prompts
+- Add persistent zone risk heatmap with time-window filters
 - Add alert export and event logging backends
 - Add configuration presets per workplace type
 - Add end-to-end benchmark and profiling suite

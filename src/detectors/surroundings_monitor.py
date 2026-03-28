@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Tuple
 
 from src.utils.types import Detection, SceneHazardEvent
 
@@ -15,7 +15,8 @@ class SurroundingsMonitor:
         "exposed_wires": 0.9,
     }
 
-    vehicle_labels = {"forklift", "truck", "bus", "car", "robot"}
+    vehicle_labels = {"forklift", "truck", "bus", "car", "robot", "motorcycle", "bicycle", "train"}
+    dangerous_object_labels = {"knife", "scissors", "chainsaw", "hammer", "drill", "gas_cylinder"}
 
     @staticmethod
     def _center(bbox):
@@ -27,6 +28,7 @@ class SurroundingsMonitor:
 
         persons = [d for d in detections if d.label == "person"]
         vehicles = [d for d in detections if d.label in self.vehicle_labels]
+        dangerous_objects = [d for d in detections if d.label in self.dangerous_object_labels]
 
         # Direct hazards detected in the scene regardless of worker behavior.
         for d in detections:
@@ -56,19 +58,49 @@ class SurroundingsMonitor:
         if persons and vehicles:
             for p in persons:
                 px, py = self._center(p.bbox)
-                closest = None
+                closest: Optional[Tuple[Detection, float]] = None
                 for v in vehicles:
                     vx, vy = self._center(v.bbox)
                     dist = ((px - vx) ** 2 + (py - vy) ** 2) ** 0.5
-                    closest = dist if closest is None else min(closest, dist)
+                    if closest is None or dist < closest[1]:
+                        closest = (v, dist)
 
-                if closest is not None and closest < 120.0:
+                if closest is not None and closest[1] < 140.0:
+                    nearest_vehicle, min_dist = closest
                     events.append(
                         SceneHazardEvent(
                             hazard_type="worker_equipment_proximity",
-                            confidence=max(0.5, min(1.0, 1.0 - closest / 120.0)),
-                            severity=0.7,
-                            details=f"Worker #{p.track_id} very close to equipment",
+                            confidence=max(0.5, min(1.0, 1.0 - min_dist / 140.0)),
+                            severity=0.78,
+                            details=(
+                                f"Worker #{p.track_id} is close to {nearest_vehicle.label} "
+                                f"({min_dist:.0f}px)"
+                            ),
+                        )
+                    )
+
+        # Alert when a dangerous object is near workers even without explicit collision prediction.
+        if persons and dangerous_objects:
+            for p in persons:
+                px, py = self._center(p.bbox)
+                nearest: Optional[Tuple[Detection, float]] = None
+                for obj in dangerous_objects:
+                    ox, oy = self._center(obj.bbox)
+                    dist = ((px - ox) ** 2 + (py - oy) ** 2) ** 0.5
+                    if nearest is None or dist < nearest[1]:
+                        nearest = (obj, dist)
+
+                if nearest is not None and nearest[1] < 160.0:
+                    nearest_obj, min_dist = nearest
+                    events.append(
+                        SceneHazardEvent(
+                            hazard_type="dangerous_object_proximity",
+                            confidence=max(0.55, min(1.0, 1.0 - min_dist / 160.0)),
+                            severity=0.82,
+                            details=(
+                                f"Worker #{p.track_id} is near {nearest_obj.label} "
+                                f"({min_dist:.0f}px)"
+                            ),
                         )
                     )
 

@@ -1,9 +1,12 @@
 import tempfile
 import time
+import json
+from typing import Dict, Tuple
 
 import cv2
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.config import AppConfig
 from src.inference.adapters import YOLODetectorAdapter
@@ -137,6 +140,107 @@ def draw_status(frame: np.ndarray, analysis):
         )
 
 
+def _zone_id_from_point(
+    x: float,
+    y: float,
+    frame_w: int,
+    frame_h: int,
+    rows: int = 3,
+    cols: int = 3,
+) -> Tuple[int, int]:
+    col = int(np.clip((x / max(frame_w, 1)) * cols, 0, cols - 1))
+    row = int(np.clip((y / max(frame_h, 1)) * rows, 0, rows - 1))
+    return row, col
+
+
+def update_zone_risk(
+    zone_scores: Dict[Tuple[int, int], float],
+    zone_hits: Dict[Tuple[int, int], int],
+    detections,
+    risk_score: float,
+    frame_shape,
+    rows: int = 3,
+    cols: int = 3,
+):
+    frame_h, frame_w = frame_shape[:2]
+    for det in detections:
+        x1, y1, x2, y2 = det.bbox
+        center_x = (x1 + x2) / 2.0
+        center_y = (y1 + y2) / 2.0
+        zone = _zone_id_from_point(center_x, center_y, frame_w, frame_h, rows=rows, cols=cols)
+        weighted_risk = float(risk_score) * max(float(det.confidence), 0.25)
+        zone_scores[zone] = zone_scores.get(zone, 0.0) + weighted_risk
+        zone_hits[zone] = zone_hits.get(zone, 0) + 1
+
+
+def render_zone_heatmap_image(
+    zone_scores: Dict[Tuple[int, int], float],
+    zone_hits: Dict[Tuple[int, int], int],
+    rows: int = 3,
+    cols: int = 3,
+) -> np.ndarray:
+    avg = np.zeros((rows, cols), dtype=np.float32)
+    for r in range(rows):
+        for c in range(cols):
+            hits = zone_hits.get((r, c), 0)
+            if hits > 0:
+                avg[r, c] = zone_scores.get((r, c), 0.0) / hits
+
+    norm = avg.copy()
+    peak = float(np.max(norm))
+    if peak > 0:
+        norm = norm / peak
+
+    heat = (norm * 255).astype(np.uint8)
+    heat_color = cv2.applyColorMap(heat, cv2.COLORMAP_TURBO)
+    heat_color = cv2.resize(heat_color, (360, 360), interpolation=cv2.INTER_NEAREST)
+
+    cell_h = heat_color.shape[0] // rows
+    cell_w = heat_color.shape[1] // cols
+    for r in range(rows):
+        for c in range(cols):
+            x = c * cell_w
+            y = r * cell_h
+            cv2.rectangle(heat_color, (x, y), (x + cell_w, y + cell_h), (255, 255, 255), 1)
+            value = avg[r, c]
+            label = f"Z{r + 1}-{c + 1}: {value:.2f}"
+            cv2.putText(
+                heat_color,
+                label,
+                (x + 6, y + 22),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.47,
+                (255, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+    return cv2.cvtColor(heat_color, cv2.COLOR_BGR2RGB)
+
+
+def speak_coaching_message(message: str):
+    safe_message = json.dumps(message)
+    components.html(
+        f"""
+        <script>
+        const msg = {safe_message};
+        if (msg && window.speechSynthesis) {{
+            const synth = window.speechSynthesis;
+            // Replace current utterance if any; Python-side cooldown throttles re-triggers.
+            synth.cancel();
+            const u = new SpeechSynthesisUtterance(msg);
+            u.rate = 1.0;
+            u.pitch = 1.0;
+            u.volume = 1.0;
+            synth.speak(u);
+        }}
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
 def resolve_video_source(source_mode: str, uploaded_file):
     if source_mode == "Webcam":
         return 0
@@ -192,13 +296,9 @@ def app():
             else None
         )
         st.caption("Runtime uses tuned defaults for stable real-time behavior.")
+        voice_coach_enabled = st.toggle("Voice Coach", value=True)
+        voice_cooldown_seconds = st.slider("Voice Cooldown (seconds)", min_value=3, max_value=20, value=7, step=1)
         run_btn = st.button("Start Monitoring", use_container_width=True)
-
-        st.markdown("### Active Profile")
-        st.write("Model: YOLOv8 Nano")
-        st.write(f"Confidence: {conf:.2f}")
-        st.write(f"IoU: {iou:.2f}")
-        st.write(f"Frame Budget: {frame_limit}")
 
     video_source = resolve_video_source(source_mode, uploaded)
 
@@ -215,6 +315,7 @@ def app():
     events_slot = col2.container(border=True)
     fatigue_slot = col2.container(border=True)
     coach_slot = col2.container(border=True)
+    heatmap_slot = col2.container(border=True)
     progress_slot = col1.empty()
 
     with events_slot:
@@ -233,6 +334,11 @@ def app():
     with coach_slot:
         st.markdown("### Real-time Safety Coaching")
         coach_body = st.empty()
+
+    with heatmap_slot:
+        st.markdown("### Zone Risk Heatmap")
+        heatmap_image_slot = st.empty()
+        zone_summary_slot = st.empty()
 
     if not run_btn:
         frame_slot.markdown(
@@ -275,6 +381,10 @@ def app():
         return
 
     risk_history = []
+    zone_scores: Dict[Tuple[int, int], float] = {}
+    zone_hits: Dict[Tuple[int, int], int] = {}
+    last_voice_message = ""
+    last_voice_ts = 0.0
     last_ts = time.time()
     processed = 0
     while cap.isOpened() and processed < frame_limit:
@@ -288,6 +398,7 @@ def app():
 
         detections = detector.predict(frame)
         analysis = pipeline.analyze_frame(detections, dt, frame=frame)
+        update_zone_risk(zone_scores, zone_hits, detections, analysis.risk_score, frame.shape)
 
         render = frame.copy()
         draw_boxes(render, detections)
@@ -325,6 +436,35 @@ def app():
                 st.warning(msg)
             if not analysis.coaching_messages:
                 st.caption("No coaching prompts in current frame.")
+
+        heatmap_image = render_zone_heatmap_image(zone_scores, zone_hits)
+        heatmap_image_slot.image(heatmap_image, channels="RGB", use_container_width=True)
+
+        zone_rank = []
+        for (r, c), score in zone_scores.items():
+            hits = zone_hits.get((r, c), 0)
+            if hits > 0:
+                zone_rank.append((score / hits, f"Z{r + 1}-{c + 1}"))
+        zone_rank.sort(reverse=True)
+        if zone_rank:
+            top_zones = ", ".join([f"{name} ({val:.2f})" for val, name in zone_rank[:3]])
+            zone_summary_slot.caption(f"Highest-risk zones: {top_zones}")
+        else:
+            zone_summary_slot.caption("No zone risk data yet.")
+
+        if voice_coach_enabled and analysis.coaching_messages:
+            speak_now = (
+                analysis.risk_level in {"HIGH", "MEDIUM"}
+                and "Safety status normal" not in analysis.coaching_messages[0]
+            )
+            if speak_now:
+                candidate = analysis.coaching_messages[0]
+                elapsed = now - last_voice_ts
+                # Enforce cooldown regardless of message changes to avoid repeated speech on every frame.
+                if elapsed >= float(voice_cooldown_seconds):
+                    speak_coaching_message(candidate)
+                    last_voice_message = candidate
+                    last_voice_ts = now
 
         processed += 1
 

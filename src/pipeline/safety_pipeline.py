@@ -74,11 +74,30 @@ class SafetyPipeline:
             collision_component,
             surroundings_component,
         )
+
+        imminent_collision = any(e.predicted_seconds <= 1.5 and e.confidence >= 0.45 for e in collision_events)
+        probable_collision = any(e.predicted_seconds <= 3.0 and e.confidence >= 0.45 for e in collision_events)
+        dangerous_proximity = any(
+            e.hazard_type in {"worker_equipment_proximity", "dangerous_object_proximity"}
+            and (e.severity * e.confidence) >= 0.45
+            for e in scene_hazard_events
+        )
+
         if critical_component >= 0.9:
             risk_score = max(risk_score, 0.8)
             risk_level = "HIGH"
         elif critical_component >= 0.7 and risk_level == "LOW":
             risk_score = max(risk_score, 0.5)
+            risk_level = "MEDIUM"
+
+        if imminent_collision:
+            risk_score = max(risk_score, 0.82)
+            risk_level = "HIGH"
+        elif probable_collision and dangerous_proximity:
+            risk_score = max(risk_score, 0.78)
+            risk_level = "HIGH"
+        elif (probable_collision or dangerous_proximity) and risk_level == "LOW":
+            risk_score = max(risk_score, 0.55)
             risk_level = "MEDIUM"
 
         coaching_messages = self.coach.generate(
